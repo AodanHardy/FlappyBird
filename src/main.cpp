@@ -7,11 +7,9 @@
 using namespace sf;
 using std::deque;
 
-// ---------------------------- Screen ----------------------------
 static const int SCREEN_WIDTH  = 720;
 static const int SCREEN_HEIGHT = 1000;
 
-// ---------------------------- RNG -------------------------------
 struct RNG {
     std::mt19937 gen{std::random_device{}()};
     float uniform(float a, float b) {
@@ -20,7 +18,6 @@ struct RNG {
     }
 } rng;
 
-// ------------------------ Digit display ------------------------
 struct DigitDisplay {
     Texture digits[10];
     Sprite  spr;
@@ -55,7 +52,6 @@ struct DigitDisplay {
     }
 };
 
-// ---------------------------- Bird ------------------------------
 struct Bird {
     Texture frames[3];
     Sprite  sprite;
@@ -82,7 +78,7 @@ struct Bird {
         sprite.move(0.f, velY * dt);
 
         animTime += dt;
-        int f = (int)(animTime * 12.f) % 3; // 12 fps
+        int f = (int)(animTime * 12.f) % 3;
         sprite.setTexture(frames[f]);
 
         float angle = std::max(-30.f, std::min(70.f, velY * 0.08f));
@@ -99,9 +95,6 @@ struct Bird {
     }
 };
 
-// ---------------------------- Pipes -----------------------------
-// Fixed-gap model: randomize the TOP EDGE of the bottom pipe (bottomTopY)
-// then place the BOTTOM EDGE of the top pipe at bottomTopY - GAP_PIX - bandPad.
 struct PipePair {
     static Texture& tex() {
         static Texture t;
@@ -112,12 +105,12 @@ struct PipePair {
 
     Sprite top, bot;
     float  x{0.f};
-    float  bottomTopY{0.f}; // top edge (Y) of the bottom pipe
-    float  gapPx{160.f};    // visual gap
+    float  bottomTopY{0.f};
+    float  gapPx{160.f};
     bool   counted{false};
 
-    float  pipeScale{0.72f}; // pipe thickness relative to world SCALE
-    float  bandPad{0.f};     // small visual pad so the collars don’t enter the gap
+    float  pipeScale{0.72f};
+    float  bandPad{0.f};
 
     void init(float startX, float bottomTopY_, float worldScale, float gapPixels) {
         x = startX;
@@ -126,25 +119,25 @@ struct PipePair {
         counted = false;
 
         pipeScale *= worldScale;
-        bandPad = 8.f * worldScale; // tweak 6–12 to taste
+        bandPad = 8.f * worldScale;
 
         auto& t = tex();
         top.setTexture(t);
         bot.setTexture(t);
 
-        top.setScale(pipeScale, -pipeScale); // flip vertically
+        top.setScale(pipeScale, -pipeScale);
         bot.setScale(pipeScale,  pipeScale);
 
-        top.setOrigin(0.f, (float)t.getSize().y); // bottom-left
-        bot.setOrigin(0.f, 0.f);                  // top-left
+        top.setOrigin(0.f, (float)t.getSize().y);
+        bot.setOrigin(0.f, 0.f);
 
         updateSprites();
     }
 
     void updateSprites() {
-        float topBottomY = bottomTopY - gapPx - bandPad; // bottom edge of top pipe
+        float topBottomY = bottomTopY - gapPx - bandPad;
         top.setPosition(x, topBottomY);
-        bot.setPosition(x, bottomTopY + bandPad);        // push bottom down a hair
+        bot.setPosition(x, bottomTopY + bandPad);
     }
 
     float width() const { return tex().getSize().x * pipeScale; }
@@ -162,15 +155,12 @@ struct PipePair {
     }
 };
 
-// ---------------------------- State -----------------------------
 enum class State { Ready, Playing, GameOver };
 
-// ----------------------------- Main -----------------------------
 int main() {
     RenderWindow window(VideoMode(SCREEN_WIDTH, SCREEN_HEIGHT), "Flappy Bird");
     window.setFramerateLimit(60);
 
-    // Background — scale by WIDTH so no black bars
     Texture bgTex; bgTex.loadFromFile("assets/sprites/background-day.png");
     bgTex.setSmooth(false);
     Sprite  bg(bgTex);
@@ -186,7 +176,6 @@ int main() {
     const float GAP_PIX      = 320.f  * SCALE;
     const float BIRD_X       = SCREEN_WIDTH * 0.28f;
 
-    // Ground (two tiles, scrolling)
     Texture baseTex; baseTex.loadFromFile("assets/sprites/base.png");
     baseTex.setSmooth(false);
     Sprite  base1(baseTex), base2(baseTex);
@@ -217,18 +206,13 @@ int main() {
     // Pipes
     deque<PipePair> pipes;
 
-    // SAFE spawn helper: compute a valid random range so min < max on 1000px height
     auto spawnPipeAt = [&](float startX){
-        // Keep the gap comfortably on-screen.
-        const float topMargin    = 40.f * SCALE; // distance from top
-        const float bottomMargin = 60.f * SCALE; // distance from ground
+        const float topMargin    = 40.f * SCALE;
+        const float bottomMargin = 60.f * SCALE;
 
-        // bottomTopY is the TOP of the bottom pipe. It must be >= (gap + pad + topMargin)
-        // and <= (groundY - bottomMargin).
         float minBottomTop = (GAP_PIX + 8.f * SCALE) + topMargin;
         float maxBottomTop = groundY - bottomMargin;
 
-        // Clamp to be safe (in case window sizes change)
         if (minBottomTop > maxBottomTop) {
             float mid = (groundY + topMargin) * 0.5f;
             minBottomTop = mid - 10.f * SCALE;
@@ -241,7 +225,6 @@ int main() {
         pipes.emplace_back(p);
     };
 
-    // Seed a few columns ahead of time
     float xCarry = (float)SCREEN_WIDTH + 220.f * SCALE;
     for (int i = 0; i < 3; ++i) {
         spawnPipeAt(xCarry);
@@ -276,9 +259,8 @@ int main() {
                (e.type == Event::KeyPressed && (e.key.code == Keyboard::Space || e.key.code == Keyboard::Up));
     };
 
-    // --------------------------- Loop ---------------------------
+    // Game loop
     while (window.isOpen()) {
-        // Events
         Event e;
         while (window.pollEvent(e)) {
             if (e.type == Event::Closed) window.close();
@@ -291,7 +273,6 @@ int main() {
             }
         }
 
-        // Fixed update
         float frame = clock.restart().asSeconds();
         accumulator += frame;
         while (accumulator >= dt) {
@@ -317,7 +298,6 @@ int main() {
                     }
                 }
 
-                // Ground scroll/wrap
                 base1.move(-GROUND_SPEED * dt, 0.f);
                 base2.move(-GROUND_SPEED * dt, 0.f);
                 if (base1.getPosition().x + base1.getGlobalBounds().width <= 0.f)
