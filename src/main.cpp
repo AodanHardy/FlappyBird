@@ -1,405 +1,350 @@
-#include <iostream>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
+#include <deque>
 #include <random>
-#include <vector>
+#include <string>
 
-using namespace std;
 using namespace sf;
+using std::deque;
 
-#define SCREEN_WIDTH 720
-#define SCREEN_HEIGHT 1000
+// ---------------------------- Screen ----------------------------
+static const int SCREEN_WIDTH  = 720;
+static const int SCREEN_HEIGHT = 1000;
 
-#define FALL_SPEED 10
+// ---------------------------- RNG -------------------------------
+struct RNG {
+    std::mt19937 gen{std::random_device{}()};
+    float uniform(float a, float b) {
+        std::uniform_real_distribution<float> d(a, b);
+        return d(gen);
+    }
+} rng;
 
-const Vector2f BIRD_START_POS(SCREEN_WIDTH/5, 0.0f);
-int score;
+// ------------------------ Digit display ------------------------
+struct DigitDisplay {
+    Texture digits[10];
+    Sprite  spr;
+    bool ok{true};
 
+    DigitDisplay() {
+        for (int i = 0; i < 10; ++i) {
+            if (!digits[i].loadFromFile("assets/sprites/" + std::to_string(i) + ".png"))
+                ok = false;
+            digits[i].setSmooth(false);
+        }
+        spr.setScale(1.f, 1.f);
+    }
 
-#define PIPE_SPEED 5
+    void setScale(float s) { spr.setScale(s, s); }
 
-RenderWindow window;
-
-bool isClicked;
-
-
-const float TIME_BETWEEN_PIPES = 2;
-
-const Vector2f DEFAULT_PIPE_POS(750, 0);
-const float DEFAULT_PIPE_DISTANCE = 600;
-
-
-
-float getRandom(int num1, int num2) {
-	float min = static_cast<float>(num1);
-	float max = static_cast<float>(num2);
-	static random_device randomDevice;
-	static mt19937 generator(randomDevice());
-	uniform_real_distribution<float> distribution(min, max);
-
-	return (distribution(generator));
-}// Method takes two numbers and gets random int between them
-
-
-class Bird {
-private:
-	Vector2f position;
-	Texture tex_bird;
-	Sprite spr_bird;
-	
-
-public:
-
-	explicit Bird() {
-		tex_bird.loadFromFile("bird.png");
-		spr_bird.setTexture(tex_bird);
-		spr_bird.setScale(.1f, .1f);
-		position = BIRD_START_POS;
-		spr_bird.setPosition(position);
-	}
-
-	void update() {
-		spr_bird.setPosition(position);
-	}
-
-	void fly() {
-		if (position.y>0){
-			position.y -= 15;
-	}}
-	void fall() {
-		position.y += 6;
-	}
-
-	void draw(RenderWindow& window) {
-		window.draw(spr_bird);
-	}
-	FloatRect getRect() {
-		auto size = tex_bird.getSize();
-		return {
-			position.x, position.y,
-			(float)size.x, (float)size.y
-		};
-	}
-
-	float getYPos() {
-		return spr_bird.getPosition().y;
-	}
-
-	Sprite getBird() { return spr_bird; }
-
-	
-
-};//Bird Class
-
-
-
-class Pipe
-{
-
-private:
-	Vector2f topPipePos;
-	Texture tex_topPipe;
-	Sprite spr_topPipe;
-
-
-	Vector2f bottomPipePos;
-	Texture tex_bottomPipe;
-	Sprite spr_bottomPipe;
-
-	bool isActive;
-	bool isPassed = false;
-
-public:
-	Pipe() {
-		tex_topPipe.loadFromFile("pipe.png");
-		spr_topPipe.setTexture(tex_topPipe);
-		spr_topPipe.setScale(.8, .8);
-		spr_topPipe.setOrigin(0, 425);
-		
-		
-
-	
-		tex_bottomPipe.loadFromFile("bottomPipe.png");
-		spr_bottomPipe.setTexture(tex_bottomPipe);
-		spr_bottomPipe.setScale(.8, .8);
-
-		isActive = false;
-		
-	}
-	~Pipe(){}
-
-	void setPosition(){
-		float randomNum = getRandom(-9, 9);
-		topPipePos.y = DEFAULT_PIPE_POS.y + (randomNum * 20);
-		topPipePos.x = DEFAULT_PIPE_POS.x;
-
-		bottomPipePos.x = topPipePos.x;
-		bottomPipePos.y = topPipePos.y + DEFAULT_PIPE_DISTANCE;
-
-		isPassed = false;
-
-	}
-
-	void update() {
-		spr_topPipe.setPosition(topPipePos);
-		spr_bottomPipe.setPosition(bottomPipePos);
-	}
-	void checkIfPassed(){
-		if (BIRD_START_POS.x>spr_topPipe.getPosition().x){isPassed = true;}
-	}
-
-	bool getIfPassed() {
-		return isPassed;
-	}
-
-	void draw(RenderWindow& window) {
-
-		window.draw(spr_topPipe);
-		window.draw(spr_bottomPipe); 
-		isActive = true;
-		
-	}
-
-	void move() {
-		topPipePos.x -= PIPE_SPEED;
-		bottomPipePos.x -= PIPE_SPEED;
-	}
-
-
-	float getPos() {
-		return spr_topPipe.getPosition().x;
-	}
-
-
-
-	FloatRect getUpperRect() const {
-		auto size = tex_topPipe.getSize();
-		return {
-				topPipePos.x, topPipePos.y,
-				0, (float)size.y
-		};
-	}
-
-	FloatRect getLowerRect() const {
-		auto size = tex_topPipe.getSize();
-		return {
-			 	bottomPipePos.x, bottomPipePos.y,
-				(float)size.x, (float)size.y
-		};
-	}
-	bool checkIfActive() { if (isActive == true) { return true; } else { return false; } }
-	void setIfActive(bool active) { isActive = active; }
-	Sprite getUpper() { return spr_topPipe; }
-	Sprite getLower() { return spr_bottomPipe; }
-	
+    void drawCenter(RenderWindow& window, int value, float y) {
+        if (!ok) return;
+        std::string s = std::to_string(value);
+        float totalW = 0.f;
+        for (char c : s) {
+            auto& t = digits[c - '0'];
+            totalW += t.getSize().x * spr.getScale().x + 6.f;
+        }
+        float x = (window.getSize().x - totalW) * 0.5f;
+        for (char c : s) {
+            spr.setTexture(digits[c - '0']);
+            spr.setPosition(x, y);
+            window.draw(spr);
+            x += spr.getTexture()->getSize().x * spr.getScale().x + 6.f;
+        }
+    }
 };
 
+// ---------------------------- Bird ------------------------------
+struct Bird {
+    Texture frames[3];
+    Sprite  sprite;
+    float   animTime{0.f};
+    float   velY{0.f};
 
-bool checkColision(Bird bird, Pipe pipe) {
-	bool collision = false;
+    void init(float scale, float startX, float startY) {
+        frames[0].loadFromFile("assets/sprites/yellowbird-upflap.png");
+        frames[1].loadFromFile("assets/sprites/yellowbird-midflap.png");
+        frames[2].loadFromFile("assets/sprites/yellowbird-downflap.png");
+        for (auto& t : frames) t.setSmooth(false);
 
+        sprite.setTexture(frames[1]);
+        sprite.setScale(scale, scale);
+        sprite.setOrigin(sprite.getLocalBounds().width * 0.5f,
+                         sprite.getLocalBounds().height * 0.5f);
+        sprite.setPosition(startX, startY);
+    }
 
-	//get bird bounds
-	Sprite spr_bird = bird.getBird();
-	Rect<float> birdRect = spr_bird.getGlobalBounds();
+    void flap(float impulse) { velY = impulse; }
 
+    void update(float dt, float gravity) {
+        velY += gravity * dt;
+        sprite.move(0.f, velY * dt);
 
-	//get Pipe bounds
-	Sprite spr_topPipe = pipe.getUpper();
-	Rect<float> topRect = spr_topPipe.getGlobalBounds();
+        animTime += dt;
+        int f = (int)(animTime * 12.f) % 3; // 12 fps
+        sprite.setTexture(frames[f]);
 
-	Sprite spr_bottomPipe = pipe.getLower();
-	Rect<float>bottomRect = spr_bottomPipe.getGlobalBounds();
+        float angle = std::max(-30.f, std::min(70.f, velY * 0.08f));
+        sprite.setRotation(angle);
+    }
 
-	//check if bird intrsects with either pipe or falls off screen
-	if (pipe.checkIfActive()){
-		collision = birdRect.intersects(topRect) || birdRect.intersects(bottomRect) || bird.getYPos()>SCREEN_HEIGHT;
-	}
+    FloatRect bounds() const {
+        FloatRect b = sprite.getGlobalBounds();
+        const float insetX = b.width * 0.12f;
+        const float insetY = b.height * 0.10f;
+        b.left  += insetX;  b.width  -= insetX * 2.f;
+        b.top   += insetY;  b.height -= insetY * 2.f;
+        return b;
+    }
+};
 
-	
-	if (collision) { cout << "Collision"<< endl; }
+// ---------------------------- Pipes -----------------------------
+// Fixed-gap model: randomize the TOP EDGE of the bottom pipe (bottomTopY)
+// then place the BOTTOM EDGE of the top pipe at bottomTopY - GAP_PIX - bandPad.
+struct PipePair {
+    static Texture& tex() {
+        static Texture t;
+        static bool ok = false;
+        if (!ok) { t.loadFromFile("assets/sprites/pipe-green.png"); t.setSmooth(false); ok = true; }
+        return t;
+    }
 
-	return collision;
-}
+    Sprite top, bot;
+    float  x{0.f};
+    float  bottomTopY{0.f}; // top edge (Y) of the bottom pipe
+    float  gapPx{160.f};    // visual gap
+    bool   counted{false};
 
+    float  pipeScale{0.72f}; // pipe thickness relative to world SCALE
+    float  bandPad{0.f};     // small visual pad so the collars don’t enter the gap
 
-bool alive = true;
-vector<Pipe> pipes;
-Clock pipeGeneratingClock;
+    void init(float startX, float bottomTopY_, float worldScale, float gapPixels) {
+        x = startX;
+        bottomTopY = bottomTopY_;
+        gapPx = gapPixels;
+        counted = false;
 
+        pipeScale *= worldScale;
+        bandPad = 8.f * worldScale; // tweak 6–12 to taste
 
-void flappyBirds() {
-	RenderWindow window{ VideoMode{SCREEN_WIDTH, SCREEN_HEIGHT}, "Flappy Birds" };
-	window.setFramerateLimit(60);
+        auto& t = tex();
+        top.setTexture(t);
+        bot.setTexture(t);
 
-	score = 0;
+        top.setScale(pipeScale, -pipeScale); // flip vertically
+        bot.setScale(pipeScale,  pipeScale);
 
-	// Bird init
-	Bird mainBird = Bird();
+        top.setOrigin(0.f, (float)t.getSize().y); // bottom-left
+        bot.setOrigin(0.f, 0.f);                  // top-left
 
-	// Texture Set-up
-	Texture tex_background, tex_bird;
-	tex_background.loadFromFile("bg.png");
+        updateSprites();
+    }
 
-	//Sprite setup
-	Sprite spr_background(tex_background);
-	spr_background.scale(2, 2);
+    void updateSprites() {
+        float topBottomY = bottomTopY - gapPx - bandPad; // bottom edge of top pipe
+        top.setPosition(x, topBottomY);
+        bot.setPosition(x, bottomTopY + bandPad);        // push bottom down a hair
+    }
 
-	isClicked = false;
+    float width() const { return tex().getSize().x * pipeScale; }
+    void  move(float dx) { x += dx; updateSprites(); }
+    bool  offLeft() const { return x + width() < -50.f; }
+    bool  passed(float birdX) const { return (x + width()) < birdX; }
 
-	sf::RectangleShape lowerRectangle({ (float)window.getSize().x,(float)window.getSize().y });
+    bool  intersects(const FloatRect& bird) const {
+        FloatRect a = top.getGlobalBounds();
+        FloatRect b = bot.getGlobalBounds();
+        float inset = width() * 0.08f;
+        a.left += inset; a.width -= inset * 2.f;
+        b.left += inset; b.width -= inset * 2.f;
+        return bird.intersects(a) || bird.intersects(b);
+    }
+};
 
-	lowerRectangle.setPosition(0, (float)tex_background.getSize().y);
-	lowerRectangle.setFillColor({ 245, 228, 138 });
-	window.draw(lowerRectangle);
+// ---------------------------- State -----------------------------
+enum class State { Ready, Playing, GameOver };
 
-	Pipe pipe;
-	for (int i = 0; i < 6; i++) {
-		pipe = Pipe();
-		pipe.setPosition();
-		pipes.push_back(pipe);
-
-	}
-
-
-	while (window.isOpen()) {
-		while (alive) {
-
-
-			Event newEvent;
-
-			while (window.pollEvent(newEvent)) {
-				if (newEvent.type == sf::Event::Closed)
-				{
-					window.close();
-				}
-			}
-
-			if (newEvent.type == sf::Event::MouseButtonPressed) {
-				mainBird.fly();
-			}
-
-			window.clear();
-
-
-
-
-			// Drawing sprites to screen
-			window.draw(spr_background);
-			mainBird.fall();
-			mainBird.update();
-			mainBird.draw(window);
-
-
-
-			for (auto& pipe : pipes) {
-
-				if (checkColision(mainBird, pipe) && pipe.checkIfActive())
-				{
-					for (auto& pipe : pipes) {
-						if (pipe.getIfPassed()) { score++; }
-					}
-					cout << score << endl;
-					alive = false;
-					window.close();
-
-				}
-
-				pipe.checkIfPassed();//checking is bird has passed the pipe, if so bool isPassed is set to true.
-
-			}
-			if (!alive) {
-				for (auto& pipe : pipes) {
-
-
-				}
-			}
-			
-
-
-			if (pipeGeneratingClock.getElapsedTime().asSeconds() > .1 && alive) {
-				pipes[0].move();
-				pipes[0].update();
-				pipes[0].draw(window);
-
-				if ((pipeGeneratingClock.getElapsedTime().asSeconds() > TIME_BETWEEN_PIPES * 1)) {
-					pipes[1].move();
-					pipes[1].update();
-					pipes[1].draw(window);
-
-					if ((pipeGeneratingClock.getElapsedTime().asSeconds() > TIME_BETWEEN_PIPES * 2)) {
-						pipes[2].move();
-						pipes[2].update();
-						pipes[2].draw(window);
-
-						if (pipeGeneratingClock.getElapsedTime().asSeconds() > TIME_BETWEEN_PIPES * 2.7) {
-							pipes[3].move();
-							pipes[3].update();
-							pipes[3].draw(window);
-
-							if (pipeGeneratingClock.getElapsedTime().asSeconds() > TIME_BETWEEN_PIPES * 3.5) {
-								pipes[4].move();
-								pipes[4].update();
-								pipes[4].draw(window);
-
-								if (pipeGeneratingClock.getElapsedTime().asSeconds() > TIME_BETWEEN_PIPES * 4.2) {
-									pipes[5].move();
-									pipes[5].update();
-									pipes[5].draw(window);
-
-									if (pipeGeneratingClock.getElapsedTime().asSeconds() > TIME_BETWEEN_PIPES * 5.3) {
-										for (auto& pipe : pipes) {
-											if (pipe.getPos() <= -600)
-											{
-												if (pipe.getIfPassed()) { score++; }
-												pipe.setPosition();
-												pipe.update();
-											}
-										}
-										pipeGeneratingClock.restart();
-
-									}
-								}
-							}
-						}
-					}
-
-				}
-
-			}
-			else { alive = false; }
-
-			window.display();
-		}// alive loop
-		Event startEvent;
-		while (window.pollEvent(startEvent)) {
-			if (startEvent.type == sf::Event::Closed)
-			{
-				window.clear();
-				
-				window.close();
-			}
-		}
-
-
-		if (startEvent.type == sf::Event::MouseButtonPressed) {
-			alive = true;
-			for (auto& pipe : pipes) {
-				pipe.setIfActive(false);
-
-			}
-			
-
-			window.clear();
-		}
-
-		
-
-	}//Main loop
-
-
-}
-
+// ----------------------------- Main -----------------------------
 int main() {
-	flappyBirds();
-	return 0;
-}//Main
+    RenderWindow window(VideoMode(SCREEN_WIDTH, SCREEN_HEIGHT), "Flappy Bird");
+    window.setFramerateLimit(60);
+
+    // Background — scale by WIDTH so no black bars
+    Texture bgTex; bgTex.loadFromFile("assets/sprites/background-day.png");
+    bgTex.setSmooth(false);
+    Sprite  bg(bgTex);
+    const float SCALE = (float)SCREEN_WIDTH / (float)bgTex.getSize().x;
+    bg.setScale(SCALE, SCALE);
+    float bgHeight = bgTex.getSize().y * SCALE;
+    bg.setPosition(0.f, (SCREEN_HEIGHT - bgHeight) * 0.5f);
+
+    const float GRAVITY      = 1500.f * SCALE;
+    const float FLAP_IMPULSE = -400.f * SCALE;
+    const float PIPE_SPEED   = 220.f  * SCALE;
+    const float PIPE_SPACING = 260.f  * SCALE;
+    const float GAP_PIX      = 320.f  * SCALE;
+    const float BIRD_X       = SCREEN_WIDTH * 0.28f;
+
+    // Ground (two tiles, scrolling)
+    Texture baseTex; baseTex.loadFromFile("assets/sprites/base.png");
+    baseTex.setSmooth(false);
+    Sprite  base1(baseTex), base2(baseTex);
+    base1.setScale(SCALE, SCALE);
+    base2.setScale(SCALE, SCALE);
+
+    const float groundH = baseTex.getSize().y * SCALE;
+    const float groundY = (float)SCREEN_HEIGHT - groundH;
+
+    base1.setPosition(0.f, groundY);
+    const float groundTileW = base1.getGlobalBounds().width;
+    base2.setPosition(groundTileW, groundY);
+    const float GROUND_SPEED = PIPE_SPEED * 0.8f;
+
+    // Sounds
+    SoundBuffer wingBuf, hitBuf, pointBuf;
+    wingBuf.loadFromFile("assets/audio/wing.wav");
+    hitBuf.loadFromFile("assets/audio/hit.wav");
+    pointBuf.loadFromFile("assets/audio/point.wav");
+    Sound wing(wingBuf), hit(hitBuf), point(pointBuf);
+
+    // Score
+    DigitDisplay digits; digits.setScale(0.9f * SCALE);
+
+    // Bird
+    Bird bird; bird.init(1.0f * SCALE, BIRD_X, SCREEN_HEIGHT * 0.45f);
+
+    // Pipes
+    deque<PipePair> pipes;
+
+    // SAFE spawn helper: compute a valid random range so min < max on 1000px height
+    auto spawnPipeAt = [&](float startX){
+        // Keep the gap comfortably on-screen.
+        const float topMargin    = 40.f * SCALE; // distance from top
+        const float bottomMargin = 60.f * SCALE; // distance from ground
+
+        // bottomTopY is the TOP of the bottom pipe. It must be >= (gap + pad + topMargin)
+        // and <= (groundY - bottomMargin).
+        float minBottomTop = (GAP_PIX + 8.f * SCALE) + topMargin;
+        float maxBottomTop = groundY - bottomMargin;
+
+        // Clamp to be safe (in case window sizes change)
+        if (minBottomTop > maxBottomTop) {
+            float mid = (groundY + topMargin) * 0.5f;
+            minBottomTop = mid - 10.f * SCALE;
+            maxBottomTop = mid + 10.f * SCALE;
+        }
+
+        float bottomTop = rng.uniform(minBottomTop, maxBottomTop);
+
+        PipePair p; p.init(startX, bottomTop, SCALE, GAP_PIX);
+        pipes.emplace_back(p);
+    };
+
+    // Seed a few columns ahead of time
+    float xCarry = (float)SCREEN_WIDTH + 220.f * SCALE;
+    for (int i = 0; i < 3; ++i) {
+        spawnPipeAt(xCarry);
+        xCarry += PIPE_SPACING + pipes.back().width();
+    }
+
+    // Timing
+    Clock  clock;
+    float  accumulator = 0.f;
+    const float dt = 1.f / 120.f;
+    float  spawnTimer = 0.f;
+    const float SPAWN_INTERVAL = 1.35f; // seconds
+
+    // State
+    State state = State::Ready;
+    int   score = 0;
+
+    auto reset = [&]{
+        state = State::Ready;
+        score = 0;
+        bird.init(1.0f * SCALE, BIRD_X, SCREEN_HEIGHT * 0.45f);
+        pipes.clear();
+        float x = (float)SCREEN_WIDTH + 220.f * SCALE;
+        for (int i=0;i<3;i++) { spawnPipeAt(x); x += PIPE_SPACING + 64.f * SCALE; }
+        spawnTimer = 0.f;
+        base1.setPosition(0.f, groundY);
+        base2.setPosition(groundTileW, groundY);
+    };
+
+    auto wantsFlap = [](const Event& e){
+        return (e.type == Event::MouseButtonPressed) ||
+               (e.type == Event::KeyPressed && (e.key.code == Keyboard::Space || e.key.code == Keyboard::Up));
+    };
+
+    // --------------------------- Loop ---------------------------
+    while (window.isOpen()) {
+        // Events
+        Event e;
+        while (window.pollEvent(e)) {
+            if (e.type == Event::Closed) window.close();
+            if (state == State::Ready) {
+                if (wantsFlap(e)) { state = State::Playing; bird.flap(FLAP_IMPULSE); wing.play(); }
+            } else if (state == State::Playing) {
+                if (wantsFlap(e)) { bird.flap(FLAP_IMPULSE); wing.play(); }
+            } else if (state == State::GameOver) {
+                if (wantsFlap(e)) { reset(); }
+            }
+        }
+
+        // Fixed update
+        float frame = clock.restart().asSeconds();
+        accumulator += frame;
+        while (accumulator >= dt) {
+            if (state == State::Playing) {
+                bird.update(dt, GRAVITY);
+
+                float dx = -PIPE_SPEED * dt;
+                for (auto& p : pipes) p.move(dx);
+
+                spawnTimer += dt;
+                if (spawnTimer >= SPAWN_INTERVAL) {
+                    float lastX = pipes.empty() ? (float)SCREEN_WIDTH : pipes.back().x;
+                    float nextX = lastX + PIPE_SPACING + (pipes.empty() ? 64.f * SCALE : pipes.back().width());
+                    spawnPipeAt(nextX);
+                    spawnTimer = 0.f;
+                }
+
+                while (!pipes.empty() && pipes.front().offLeft()) pipes.pop_front();
+
+                for (auto& p : pipes) {
+                    if (!p.counted && p.passed(bird.sprite.getPosition().x)) {
+                        p.counted = true; score++; point.play();
+                    }
+                }
+
+                // Ground scroll/wrap
+                base1.move(-GROUND_SPEED * dt, 0.f);
+                base2.move(-GROUND_SPEED * dt, 0.f);
+                if (base1.getPosition().x + base1.getGlobalBounds().width <= 0.f)
+                    base1.setPosition(base2.getPosition().x + base2.getGlobalBounds().width, (float)groundY);
+                if (base2.getPosition().x + base2.getGlobalBounds().width <= 0.f)
+                    base2.setPosition(base1.getPosition().x + base1.getGlobalBounds().width, (float)groundY);
+
+                // Collisions
+                FloatRect bb = bird.bounds();
+                bool hitPipe = false;
+                for (auto& p : pipes) if (p.intersects(bb)) { hitPipe = true; break; }
+                bool hitGround = (bb.top + bb.height) >= groundY;
+                bool outTop    = (bb.top <= 0.f);
+                if (hitPipe || hitGround || outTop) { hit.play(); state = State::GameOver; }
+            }
+            accumulator -= dt;
+        }
+
+        // Draw
+        window.clear();
+        window.draw(bg);
+        for (auto& p : pipes) { window.draw(p.top); window.draw(p.bot); }
+        window.draw(base1); window.draw(base2);
+        window.draw(bird.sprite);
+        if (state != State::Ready) digits.drawCenter(window, score, 60.f * SCALE);
+        window.display();
+    }
+
+    return 0;
+}
